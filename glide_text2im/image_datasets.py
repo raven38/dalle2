@@ -99,7 +99,7 @@ def load_data_from_file(
         raise ValueError("unspecified data directory")
     image_root = data_dir + '/images'
     file_path = data_dir + 'cc12m.tsv'
-    data = np.loadtxt(file_path, delimiter="\t")
+    data = np.loadtxt(file_path, delimiter="\t", dtype=str)
     all_files = ['/'.join(image_root, fn.split('/')[-1]) for fn in data[:, 0]]
     texts = data[:, 1]
 
