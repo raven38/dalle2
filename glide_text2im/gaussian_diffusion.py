@@ -4,6 +4,8 @@ Simplified from https://github.com/openai/guided-diffusion/blob/main/guided_diff
 
 import math
 
+from .nn import mean_flat
+
 import numpy as np
 import torch as th
 
@@ -621,6 +623,44 @@ class GaussianDiffusion:
                 )
                 yield out
                 img = out["sample"]
+
+    def training_losses(self, model, x_start, t, model_kwargs=None, noise=None):
+        """
+        Compute training losses for a single timestep.
+
+        :param model: the model to evaluate loss on.
+        :param x_start: the [N x C x ...] tensor of inputs.
+        :param t: a batch of timestep indices.
+        :param model_kwargs: if not None, a dict of extra keyword arguments to
+            pass to the model. This can be used for conditioning.
+        :param noise: if specified, the specific Gaussian noise to try to remove.
+        :return: a dict with the key "loss" containing a tensor of shape [N].
+                 Some mean or variance settings may also have other keys.
+        """
+        if model_kwargs is None:
+            model_kwargs = {}
+        if noise is None:
+            noise = th.randn_like(x_start)
+        x_t = self.q_sample(x_start, t, noise=noise)
+
+        terms = {}
+        # Create the classifier-free guidance tokens (empty)
+        uncond_tokens, uncond_mask = self.model.tokenizer.padded_tokens_and_mask(
+            [], self.opt['text_ctx']
+        )
+
+        to_drop = th.rand(model_kwargs['y'].shape[0], device=model_kwargs['y'] .device).le(0.2)
+        model_kwargs['y'] = th.where(to_drop, uncond_tokens, model_kwargs['y'])
+
+        model_output = model(x_t, self._scale_timesteps(t), **model_kwargs)
+
+        target = noise
+
+        assert model_output.shape == target.shape == x_start.shape
+        terms["mse"] = mean_flat((target - model_output) ** 2)
+        terms["loss"] = terms["mse"]
+
+        return terms
 
 
 def _extract_into_tensor(arr, timesteps, broadcast_shape):
